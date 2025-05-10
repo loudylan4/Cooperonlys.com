@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cooperonlys</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #f4f4f4;
+      text-align: center;
+    }
+    header {
+      background: #333;
+      color: #fff;
+      padding: 1rem 0;
+      font-size: 2rem;
+      letter-spacing: 2px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+      gap: 1rem;
+      padding: 1rem;
+      max-width: 960px;
+      margin: auto;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+    }
+    .card:hover { transform: scale(1.03) }
+    .card img {
+      width: 100%;
+      display: block;
+    }
+    .card .title {
+      padding: 0.5rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <header>Cooperonlys</header>
+
+  <div class="grid">
+    <!-- Card 1 -->
+    <a class="card" href="meteordodge/meteordodge.html">
+      <img src="images/meteordodge.png" alt="Game 1">
+      <div class="title">Meteor Dodge</div>
+    </a>
+    <!-- Card 2 -->
+    <a class="card" href="flappygame/flappygame.html">
+      <img src="images/flappygame.png" alt="Game 2">
+      <div class="title">Traditional Flappy Bird</div>
+    </a>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Meteor Dodge</title>
+  <style>
+    body { background: #000; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    #gameContainer { position: relative; width: 500px; height: 700px; }
+    canvas { background: #111; display: block; }
+    .overlay { position: absolute; width: 100%; text-align: center; color: white; font-family: sans-serif; }
+    #scoreDisplay { top: 10px; font-size: 1.2em; }
+    #highScoreDisplay { top: 40px; font-size: 1.2em; }
+    #shotsDisplay { top: 70px; left: 10px; text-align: left; font-size: 1.2em; width: auto; }
+    #powerupDisplay { top: 100px; left: 10px; text-align: left; font-size: 1.2em; width: auto; display: none; }
+    #cooldownDisplay { top: 130px; font-size: 1.2em; display: none; }
+    #gameOverMsg { top: 40%; font-size: 2em; display: none; }
+    #startBtn { top: 50%; font-size: 1.5em; padding: 10px; background: #333; border: none; cursor: pointer; }
+    #startBtn:hover { background: #555; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="500" height="700"></canvas>
+    <div id="scoreDisplay" class="overlay">Score: 0</div>
+    <div id="highScoreDisplay" class="overlay">High Score: 0</div>
+    <div id="shotsDisplay" class="overlay">Shots: 10</div>
+    <div id="powerupDisplay" class="overlay"></div>
+    <div id="cooldownDisplay" class="overlay"></div>
+    <div id="gameOverMsg" class="overlay">Game Over!</div>
+    <button id="startBtn" class="overlay">Start Game</button>
+  </div>
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const gameOverMsg = document.getElementById('gameOverMsg');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const highScoreDisplay = document.getElementById('highScoreDisplay');
+  const shotsDisplay = document.getElementById('shotsDisplay');
+  const powerupDisplay = document.getElementById('powerupDisplay');
+  const cooldownDisplay = document.getElementById('cooldownDisplay');
+
+  let gameOver = true;
+  let score = 0;
+  let highScore = 0;
+  let speedInc = 0;
+  let meteors = [];
+  let oranges = [];
+  let enemyBullets = [];
+  let playerBullets = [];
+  let explosions = [];
+  let shots = 10;
+  let isCooldown = false;
+  let regenTO, regenINT;
+  let nextOrange = 250;
+  let powerActive = false;
+  let powerTime = 0;
+  const ship = { x: 230, y: 640, w: 40, h: 40, speed: 5 };
+  const keys = {};
+
+  function updateScore() { scoreDisplay.textContent = `Score: ${score}`; }
+  function updateHighScore() { highScoreDisplay.textContent = `High Score: ${highScore}`; }
+  function updateShots() { shotsDisplay.textContent = `Shots: ${shots}`; }
+  function updatePower() { powerupDisplay.textContent = `Forcefield: ${powerTime}s`; }
+
+  function resetGame() {
+    ship.x = 230;
+    meteors = [];
+    oranges = [];
+    enemyBullets = [];
+    playerBullets = [];
+    explosions = [];
+    score = 0;
+    speedInc = 0;
+    shots = 10;
+    isCooldown = false;
+    nextOrange = 250;
+    powerActive = false;
+    powerTime = 0;
+    clearTimeout(regenTO);
+    clearInterval(regenINT);
+    powerupDisplay.style.display = 'none';
+    cooldownDisplay.style.display = 'none';
+    updateScore(); updateHighScore(); updateShots();
+    gameOver = false;
+    gameOverMsg.style.display = 'none';
+    startBtn.style.display = 'none';
+    draw(); moveShip();
+  }
+
+  function drawShip() {
+    ctx.fillStyle = '#0f0';
+    ctx.beginPath();
+    ctx.moveTo(ship.x + ship.w/2, ship.y);
+    ctx.lineTo(ship.x, ship.y + ship.h);
+    ctx.lineTo(ship.x + ship.w, ship.y + ship.h);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'orange';
+    ctx.beginPath();
+    ctx.moveTo(ship.x + ship.w/2 - 6, ship.y + ship.h);
+    ctx.lineTo(ship.x + ship.w/2 + 6, ship.y + ship.h);
+    ctx.lineTo(ship.x + ship.w/2, ship.y + ship.h + 10);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawField() {
+    const cx = ship.x + ship.w/2;
+    const cy = ship.y + ship.h/2;
+    const r = ship.w;
+    ctx.save(); ctx.globalAlpha = 0.3; ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+  }
+
+  function drawOctagon(o) {
+    const r = o.radius;
+    ctx.fillStyle = 'orange'; ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.PI/8 + i * (2 * Math.PI/8);
+      const x = o.x + r * Math.cos(ang);
+      const y = o.y + r * Math.sin(ang);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawMeteor(m) { ctx.fillStyle = m.type; ctx.beginPath(); ctx.arc(m.x, m.y, m.radius, 0, 2 * Math.PI); ctx.fill(); }
+  function drawBullet(b) { ctx.fillStyle = b.player ? '#ff0' : 'red'; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, 2 * Math.PI); ctx.fill(); }
+  function drawExplosion(e) { ctx.fillStyle = `rgba(255,165,0,${e.alpha})`; ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, 2 * Math.PI); ctx.fill(); }
+
+  function spawnMeteor() {
+    if (gameOver) return;
+    const r = 15 + Math.random() * 15;
+    const x = Math.random() * (500 - 2 * r) + r;
+    meteors.push({ x, y: -r, radius: r, speed: 2 + Math.random() * 3 + speedInc, type: 'red' });
+  }
+  function spawnBlue() { if (!gameOver && score >= 500) { const r = 10 + Math.random()*10; const x = Math.random()*(500-2*r)+r; meteors.push({ x, y: -r, radius: r, speed: 4 + Math.random()*3 + speedInc, dx: Math.random()*2-1, type: 'blue' }); } }
+  function spawnGreen() { if (!gameOver && score >= 1500) { const r = 20 + Math.random()*10; const x = Math.random()*(500-2*r)+r; meteors.push({ x, y: -r, radius: r, speed: 2 + Math.random()*2 + speedInc, type: 'green' }); } }
+  function spawnOranges() { if (score >= nextOrange) { oranges.push({ x: Math.random()*(500-30)+15, y: -15, radius: 15, speed: 3 }); nextOrange += 500; } }
+  function shootEnemy() { if (!gameOver && score >= 1500) meteors.forEach(m => { if (m.type==='green') for (let i=0;i<2+Math.floor(Math.random()*2);i++) enemyBullets.push({ x:m.x, y:m.y+m.radius, radius:5, speed:2+Math.random()*3+speedInc, player:false }); }); }
+
+  function fireGuns() {
+    if (gameOver || isCooldown || shots <=0) return;
+    clearTimeout(regenTO); clearInterval(regenINT);
+    const l = ship.x+5, r = ship.x+ship.w-5;
+    playerBullets.push({x:l,y:ship.y,radius:4,speed:6,player:true}); playerBullets.push({x:r,y:ship.y,radius:4,speed:6,player:true});
+    shots--; updateShots();
+    if (shots<=0) { isCooldown=true; let cd=5; cooldownDisplay.textContent=`Cooldown: ${cd}`; cooldownDisplay.style.display='block';
+      const ci=setInterval(()=>{cd--, cd>0?cooldownDisplay.textContent=`Cooldown: ${cd}`:(clearInterval(ci),isCooldown=false,shots=10,updateShots(),cooldownDisplay.style.display='none',schedRegen());},1000);
+    } else schedRegen();
+  }
+  function schedRegen(){ regenTO=setTimeout(()=>{ regenINT=setInterval(()=>{ if(!gameOver&&!isCooldown&&shots<10)shots++,updateShots(); if(shots>=10)clearInterval(regenINT); },7000);},5000); }
+
+  function updateMeteors(){
+    for(let i=meteors.length-1;i>=0;i--){const m=meteors[i];m.y+=m.speed;
+      if(m.type==='blue'){m.x+=m.dx;if(m.x<m.radius||m.x>500-m.radius)m.dx*=-1;}
+      const dxs=m.x-(ship.x+ship.w/2),dys=m.y-(ship.y+ship.h/2);
+      if(Math.hypot(dxs,dys)<m.radius+ship.w/2&&!powerActive)return endGame();
+      let hit=false;
+      for(let j=playerBullets.length-1;j>=0;j--){const b=playerBullets[j],dx=m.x-b.x,dy=m.y-b.y;
+        if(Math.hypot(dx,dy)<m.radius+b.radius){explosions.push({x:m.x,y:m.y,radius:0,alpha:1});let pts=Math.round(m.radius*(m.type==='blue'?2:1))*2; if(powerActive)pts/=2;score+=pts;updateScore();meteors.splice(i,1);playerBullets.splice(j,1);hit=true;break;}}
+      if(hit) continue;
+      if(m.y-m.radius>700){let pts=Math.round(m.radius*(m.type==='blue'?2:1));if(powerActive)pts/=2;score+=pts;updateScore();meteors.splice(i,1);} }
+  }
+
+  function updateOranges(){
+    for(let i=oranges.length-1;i>=0;i--){const o=oranges[i];o.y+=o.speed;
+      if(o.y+o.radius>ship.y&&o.x>ship.x&&o.x<ship.x+ship.w){oranges.splice(i,1);powerActive=true;powerTime=5;powerupDisplay.style.display='block';updatePower();
+        const pi=setInterval(()=>{powerTime--,powerTime>0?updatePower():(clearInterval(pi),powerActive=false,powerupDisplay.style.display='none');},1000);}if(o.y-o.radius>700)oranges.splice(i,1);}
+  }
+
+  function updateBullets(){
+    for(let i=enemyBullets.length-1;i>=0;i--){const b=enemyBullets[i];b.y+=b.speed;const dx=b.x-(ship.x+ship.w/2),dy=b.y-(ship.y+ship.h/2);if(Math.hypot(dx,dy)<b.radius+ship.w/2&&!powerActive)return endGame();if(b.y>700)enemyBullets.splice(i,1);}for(let i=playerBullets.length-1;i>=0;i--){const b=playerBullets[i];b.y-=b.speed;if(b.y<0)playerBullets.splice(i,1);}  }
+
+  function updateExpl(){
+    for(let i=explosions.length-1;i>=0;i--){const e=explosions[i];e.radius+=2;e.alpha-=0.05;if(e.alpha<=0)explosions.splice(i,1);}  }
+
+  function draw(){
+    if(gameOver) return;
+    ctx.clearRect(0,0,500,700);
+    spawnOranges();
+    meteors.forEach(drawMeteor);
+    oranges.forEach(drawOctagon);
+    enemyBullets.forEach(drawBullet);
+    playerBullets.forEach(drawBullet);
+    explosions.forEach(drawExplosion);
+    if(powerActive) drawField();
+    drawShip();
+    updateMeteors();
+    updateOranges();
+    updateBullets();
+    updateExpl();
+    requestAnimationFrame(draw);
+  }
+
+  function endGame(){gameOver=true;if(score>highScore)highScore=score,updateHighScore();gameOverMsg.style.display='block';startBtn.style.display='block';}
+  function moveShip(){if(gameOver)return;keys['ArrowLeft']&&ship.x>0&&(ship.x-=ship.speed);keys['ArrowRight']&&ship.x+ship.w<500&&(ship.x+=ship.speed);requestAnimationFrame(moveShip);}  
+
+  startBtn.addEventListener('click',resetGame);
+  window.addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '&&!gameOver)fireGuns();});
+  window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+  setInterval(spawnMeteor,800);
+  setInterval(spawnBlue,5000);
+  setInterval(spawnGreen,7000);
+  setInterval(shootEnemy,1000);
+  setInterval(()=>speedInc+=0.2,25000);
+</script>
+</body>
+</html>
