@@ -19,7 +19,8 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+      /* Two columns: games 1 & 2 on first row, game 3 below game 1 */
+      grid-template-columns: repeat(2, minmax(200px, 1fr));
       gap: 1rem;
       padding: 1rem;
       max-width: 960px;
@@ -32,7 +33,7 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
       transition: transform 0.2s;
     }
-    .card:hover { transform: scale(1.03) }
+    .card:hover { transform: scale(1.03); }
     .card img {
       width: 100%;
       display: block;
@@ -57,6 +58,11 @@
     <a class="card" href="flappygame/flappygame.html">
       <img src="images/flappygame.png" alt="Game 2">
       <div class="title">Traditional Flappy Bird</div>
+    </a>
+    <!-- Card 3 -->
+    <a class="card" href="dontgetten/dontgetten.html">
+      <img src="images/dontgetten.png" alt="Game 3">
+      <div class="title">Don't Get 10</div>
     </a>
   </div>
 
