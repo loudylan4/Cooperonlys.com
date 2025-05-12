@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dice Counter Game</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+    .rainbow-line { display: flex; justify-content: space-between; width: 90%; max-width: 600px; margin: 20px auto; }
+    .rainbow-line div { width: 50px; height: 50px; transition: all 0.3s ease; cursor: pointer; }
+    .rainbow-line div.active { width: 60px; height: 60px; transform: translateY(-5px); cursor: default; }
+    .rainbow-line div.selected { outline: 3px solid hotpink; }
+    .red    { background-color: red; }
+    .orange { background-color: orange; }
+    .yellow { background-color: yellow; }
+    .green  { background-color: green; }
+    .blue   { background-color: blue; }
+    .purple { background-color: purple; }
+    #removedBlocks { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; width: 90%; max-width: 600px; margin: 20px auto; }
+    .removed-block { width: 50px; height: 50px; position: relative; }
+    .removed-block::after { content: 'X'; color: red; font-size: 2rem; position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    button { font-size: 1.2rem; padding: 10px 20px; margin: 10px; }
+    .counter { margin: 10px 0; }
+    #winMessage { font-size: 1.5rem; margin: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Don't Get 10</h1>
+  
+  <!-- Selection Screen -->
+  <div id="selectionScreen">
+    <p>Select a starting block:</p>
+    <div class="rainbow-line" id="selectionLine">
+      <div class="red"></div>
+      <div class="orange"></div>
+      <div class="yellow"></div>
+      <div class="green"></div>
+      <div class="blue"></div>
+      <div class="purple"></div>
+    </div>
+    <button id="startBtn" disabled>Start Game</button>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen" style="display:none">
+    <div class="rainbow-line" id="gameLine"></div>
+    <div id="controls">
+      <button id="rollBtn">Advance</button>
+      <button id="choose1" style="display:none">Choose 1</button>
+      <button id="choose2" style="display:none">Choose 2</button>
+      <button id="restartBtn" style="display:none">Restart Game</button>
+    </div>
+    <div id="dice">–</div>
+    <div class="counter">Total Count: <strong id="totalCount">0</strong></div>
+    <div id="removedBlocks"></div>
+    <div id="winMessage"></div>
+  </div>
+
+  <script>
+    const colors = ['red','orange','yellow','green','blue','purple'];
+    let selectedColor = null;
+    let totalCount = 0;
+
+    const selectionScreen = document.getElementById('selectionScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const selectionLine = document.getElementById('selectionLine');
+    const startBtn = document.getElementById('startBtn');
+    const rollBtn = document.getElementById('rollBtn');
+    const choose1 = document.getElementById('choose1');
+    const choose2 = document.getElementById('choose2');
+    const restartBtn = document.getElementById('restartBtn');
+    const diceEl = document.getElementById('dice');
+    const totalEl = document.getElementById('totalCount');
+    const removedContainer = document.getElementById('removedBlocks');
+    const winMessage = document.getElementById('winMessage');
+
+    selectionLine.querySelectorAll('div').forEach(block => {
+      block.addEventListener('click', () => {
+        selectionLine.querySelectorAll('div').forEach(b => b.classList.remove('selected'));
+        block.classList.add('selected');
+        selectedColor = block.classList[0];
+        startBtn.disabled = false;
+      });
+    });
+    startBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', resetScreens);
+
+    function startGame() {
+      const gameLine = document.getElementById('gameLine');
+      gameLine.innerHTML = '';
+      gameLine.appendChild(createBlockElement(selectedColor));
+      colors.forEach(color => {
+        if (color !== selectedColor) gameLine.appendChild(createBlockElement(color));
+      });
+      selectionScreen.style.display = 'none';
+      gameScreen.style.display = 'block';
+      totalCount = 0;
+      totalEl.textContent = totalCount;
+      diceEl.textContent = '–';
+      removedContainer.innerHTML = '';
+      winMessage.textContent = '';
+      rollBtn.disabled = false;
+      rollBtn.style.display = 'inline-block';
+      rollBtn.textContent = 'Advance';
+      restartBtn.style.display = 'none';
+      choose1.style.display = 'none';
+      choose2.style.display = 'none';
+      initGame();
+    }
+
+    function resetScreens() {
+      selectionLine.querySelectorAll('div').forEach(b => b.classList.remove('selected'));
+      selectedColor = null;
+      startBtn.disabled = true;
+      selectionScreen.style.display = 'block';
+      gameScreen.style.display = 'none';
+    }
+
+    function createBlockElement(color) {
+      const div = document.createElement('div');
+      div.classList.add(color);
+      if (color === selectedColor) div.classList.add('selected');
+      return div;
+    }
+
+    function initGame() {
+      const container = document.getElementById('gameLine');
+      function updateActive() {
+        Array.from(container.children).forEach(b => b.classList.remove('active'));
+        if (container.children.length) container.children[0].classList.add('active');
+        const active = container.children[0];
+        if (active.classList.contains('selected')) {
+          rollBtn.style.display = 'none';
+          choose1.style.display = 'inline-block';
+          choose2.style.display = 'inline-block';
+        } else {
+          rollBtn.style.display = 'inline-block';
+          choose1.style.display = 'none';
+          choose2.style.display = 'none';
+        }
+      }
+      updateActive();
+
+      function processRoll(value) {
+        diceEl.textContent = value;
+        totalCount += value;
+        totalEl.textContent = totalCount;
+        if (totalCount >= 10 && container.children.length > 1) {
+          const first = container.firstElementChild;
+          const clone = first.cloneNode();
+          clone.classList.add('removed-block');
+          removedContainer.appendChild(clone);
+          container.removeChild(first);
+          totalCount = 0;
+          totalEl.textContent = totalCount;
+          updateActive();
+          if (container.children.length === 1) {
+            const last = container.children[0].classList[0];
+            winMessage.textContent = `${last.charAt(0).toUpperCase()+last.slice(1)} wins!`;
+            choose1.style.display = 'none';
+            choose2.style.display = 'none';
+            rollBtn.disabled = true;
+            rollBtn.style.display = 'none';
+            restartBtn.style.display = 'inline-block';
+          }
+        } else if (container.children.length > 1) {
+          container.appendChild(container.firstElementChild);
+          updateActive();
+        }
+      }
+
+      // For non-selected blocks, if totalCount is exactly 8, force value 1
+      rollBtn.onclick = () => {
+        const forced = (totalCount === 8);
+        const val = forced ? 1 : (Math.floor(Math.random()*2)+1);
+        processRoll(val);
+      };
+      choose1.onclick = () => processRoll(1);
+      choose2.onclick = () => processRoll(2);
+    }
+  </script>
+</body>
+</html>
