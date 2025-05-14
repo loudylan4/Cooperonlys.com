@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Game Suite</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #222; position: relative; }
+    canvas { display: block; }
+    #menu {
+      position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.7); padding: 2rem; border-radius: 1rem;
+      display: flex; flex-direction: column; align-items: center; gap: 1rem; z-index: 10;
+    }
+    #gameSelect, #startBtn { font-size: 1.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+    #startBtn { background: #4ecdc4; border: none; cursor: pointer; color: #222; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="menu">
+    <select id="gameSelect">
+      <option value="spike">Spike Arike</option>
+      <option value="jump">Jump Rump</option>
+      <option value="ball">Ball Fall</option>
+      <option value="connor">Con Cactus</option>
+      <option value="crazy">Crazy Razy</option>
+    </select>
+    <button id="startBtn">Start</button>
+  </div>
+  <script>
+    // Goat image setup
+    const goatImg = new Image(); let goatReady = false;
+    goatImg.onload = () => goatReady = true;
+    goatImg.onerror = () => goatReady = false;
+    goatImg.src = 'goat.png';
+
+    const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+    const menu = document.getElementById('menu'), gameSelect = document.getElementById('gameSelect'), startBtn = document.getElementById('startBtn');
+
+    const SCALE = 1.7, PLAYER_SIZE = 30, GRAVITY = 2500;
+    let player, obstacles, speed, spawnTimer, spawnInterval, crazyIndex;
+    let gameOver, levelComplete, lastTime, score, gameMode;
+    const keys = {};
+    const H_SPEED = 300 * SCALE;
+
+    function initGame() {
+      player = { x:50, y:canvas.height-PLAYER_SIZE*SCALE, width:PLAYER_SIZE*SCALE, height:PLAYER_SIZE*SCALE, vy:0, jumpPower:1200 };
+      obstacles = [];
+      speed = 800;
+      spawnTimer = 0;
+      spawnInterval = 1500;
+      crazyIndex = 0;
+      gameOver = false;
+      levelComplete = false;
+      lastTime = 0;
+      score = 0;
+    }
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      if(player) player.y = canvas.height - player.height;
+    }
+    window.addEventListener('resize', resize);
+
+    function showMenu() { menu.style.display = 'flex'; }
+    function hideMenu() { menu.style.display = 'none'; }
+
+    function resetGame() {
+      initGame(); if(gameMode==='ball') spawnTimer = spawnInterval;
+      hideMenu(); requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if((e.code==='Space'||e.code==='ArrowUp')&&!gameOver&&!levelComplete) jump();
+      if(e.code==='Space'&&(gameOver||levelComplete)) showMenu();
+    });
+    document.addEventListener('keyup', e => keys[e.code] = false);
+    startBtn.addEventListener('click', () => { gameMode = gameSelect.value; resetGame(); });
+
+    function jump() {
+      if(player.y >= canvas.height-player.height) player.vy = -player.jumpPower;
+    }
+
+    function spawn(dt) {
+      spawnTimer += dt;
+      if(spawnTimer < spawnInterval) return;
+      spawnTimer -= spawnInterval;
+      let type = gameMode;
+      if(gameMode === 'crazy') {
+        const seq = ['spike','jump','ball','connor'];
+        type = seq[crazyIndex];
+        crazyIndex = (crazyIndex + 1) % seq.length;
+      }
+      if(type === 'ball') {
+        const r = Math.random()*20 + 15;
+        obstacles.push({ type:'ball', x: canvas.width + r, y:-r, r, vy:0, counted:false });
+      } else if(type === 'connor') {
+        const w = 40*SCALE, h = 60*SCALE;
+        obstacles.push({ type:'connor', x:canvas.width, y:canvas.height-h, width:w, height:h, counted:false });
+      } else {
+        const h = (Math.random()*50 + 20)*SCALE;
+        obstacles.push({ type:type, x:canvas.width, y:canvas.height-h, width:h, height:h, counted:false });
+      }
+    }
+
+    function circleRectColl(cx,cy,r,rx,ry,rw,rh) {
+      const nx = Math.max(rx,Math.min(cx,rx+rw));
+      const ny = Math.max(ry,Math.min(cy,ry+rh));
+      const dx = cx-nx, dy = cy-ny;
+      return dx*dx + dy*dy < r*r;
+    }
+
+    function pointInTri(px,py,ax,ay,bx,by,cx,cy) {
+      const v0x=cx-ax, v0y=cy-ay;
+      const v1x=bx-ax, v1y=by-ay;
+      const v2x=px-ax, v2y=py-ay;
+      const dot00=v0x*v0x+v0y*v0y;
+      const dot01=v0x*v1x+v0y*v1y;
+      const dot02=v0x*v2x+v0y*v2y;
+      const dot11=v1x*v1x+v1y*v1y;
+      const dot12=v1x*v2x+v1y*v2y;
+      const inv = 1/(dot00*dot11-dot01*dot01);
+      const u = (dot11*dot02 - dot01*dot12)*inv;
+      const v = (dot00*dot12 - dot01*dot02)*inv;
+      return u>=0 && v>=0 && u+v<1;
+    }
+
+    function triRect(poly,rect) {
+      for(const c of [{x:rect.x,y:rect.y},{x:rect.x+rect.width,y:rect.y},{x:rect.x,y:rect.y+rect.height},{x:rect.x+rect.width,y:rect.y+rect.height}]) {
+        if(pointInTri(c.x,c.y,poly[0].x,poly[0].y,poly[1].x,poly[1].y,poly[2].x,poly[2].y)) return true;
+      }
+      for(const p of poly) {
+        if(p.x>=rect.x&&p.x<=rect.x+rect.width&&p.y>=rect.y&&p.y<=rect.y+rect.height) return true;
+      }
+      return false;
+    }
+
+    function update(dt) {
+      if(gameOver||levelComplete) return;
+      const prevB = player.y + player.height;
+      const sec = dt/1000;
+
+      if(gameMode !== 'ball') {
+        if(keys['ArrowLeft']) player.x -= H_SPEED*sec;
+        if(keys['ArrowRight']) player.x += H_SPEED*sec;
+        player.x = Math.max(0,Math.min(canvas.width-player.width,player.x));
+      }
+
+      player.vy += GRAVITY*sec;
+      player.y += player.vy*sec;
+      if(player.y>canvas.height-player.height){player.y=canvas.height-player.height;player.vy=0;}
+
+      spawn(dt);
+      obstacles.forEach(o=>{
+        if(o.type==='ball'){ o.vy+=GRAVITY*sec; o.y+=o.vy*sec; if(o.y+o.r>canvas.height){o.y=canvas.height-o.r; o.vy=0;} o.x-=speed*sec;} else {o.x-=speed*sec;}
+      });
+      obstacles = obstacles.filter(o=> o.type==='ball'? o.x+o.r>0 : o.x+o.width>0);
+
+      const leftPos = player.x, bottomPos = player.y+player.height;
+      obstacles.forEach(o=>{
+        if(o.type==='ball'&&!o.counted&&o.x+o.r<leftPos&&bottomPos<o.y-o.r){score+=4;o.counted=true;if(score>=100)levelComplete=true;}
+      });
+      obstacles.forEach(o=>{
+        if(!o.counted){ if(o.type==='ball'&&o.y-o.r>canvas.height){score+=4;o.counted=true;if(score>=100)levelComplete=true;} else if(o.type!=='ball'&&o.x+(o.width||0)<player.x){score+=4;o.counted=true;if(score>=100)levelComplete=true;} }
+        if(o.type==='spike'){ const tri=[{x:o.x,y:canvas.height},{x:o.x+o.width/2,y:canvas.height-o.height},{x:o.x+o.width,y:canvas.height}]; if(triRect(tri,player))gameOver=true; }
+        else if(o.type==='jump'){ const t=o.y; if(player.x+player.width>o.x&&player.x<o.x+o.width){ if(prevB<=t&&bottomPos>=t){player.y=t-player.height;player.vy=0;} else if(bottomPos>t)gameOver=true; } }
+        else if(o.type==='ball'){ if(circleRectColl(o.x,o.y,o.r,player.x,player.y,player.width,player.height))gameOver=true; }
+        else if(o.type==='connor'){ if(circleRectColl(player.x+player.width/2,player.y+player.height/2,player.width/2,o.x,o.y,o.width,o.height))gameOver=true; if(!o.counted&&o.x+o.width<player.x){score+=4;o.counted=true;if(score>=100)levelComplete=true;} }
+      });
+    }
+
+    function draw(ts) {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const hue=(ts*0.02)%360; ctx.fillStyle=`hsl(${hue},60%,30%)`; ctx.fillRect(0,0,canvas.width,canvas.height);
+      if(gameMode==='connor'){
+        if(goatReady) ctx.drawImage(goatImg,player.x,player.y,player.width,player.height);
+        else { ctx.fillStyle='#0000FF';ctx.fillRect(player.x,player.y,player.width,player.height); }
+        ctx.fillStyle='#00FFFF';ctx.font=`${12*SCALE}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Goat USA',player.x+player.width/2,player.y+player.height/2);
+      } else { ctx.fillStyle='#4ecdc4';ctx.fillRect(player.x,player.y,player.width,player.height); }
+      obstacles.forEach(o=>{
+        if(o.type==='spike'){ctx.fillStyle='#ff6b6b';ctx.beginPath();ctx.moveTo(o.x,canvas.height);ctx.lineTo(o.x+o.width/2,canvas.height-o.height);ctx.lineTo(o.x+o.width,canvas.height);ctx.closePath();ctx.fill();}
+        else if(o.type==='jump'){ctx.fillStyle='#f1c40f';ctx.fillRect(o.x,o.y,o.width,o.height);} 
+        else if(o.type==='ball'){ctx.fillStyle='#3498db';ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,Math.PI*2);ctx.fill();}
+        else if(o.type==='connor'){ctx.fillStyle='#00FF00';ctx.fillRect(o.x,o.y,o.width,o.height);}  
+      });
+      ctx.fillStyle='#fff';ctx.font=`${24*SCALE}px sans-serif`;ctx.fillText(`${score}%`,70,40);
+      if(gameOver){ctx.fillStyle='#fff';ctx.font=`${36*SCALE}px sans-serif`;ctx.fillText('Game Over!',130,canvas.height/2);showMenu();}
+      else if(levelComplete){ctx.fillStyle='#fff';ctx.font=`${48*SCALE}px sans-serif`;ctx.fillText('Level Complete!',canvas.width/2-150,canvas.height/2);showMenu();}
+    }
+
+    function gameLoop(ts){if(!lastTime)lastTime=ts;const dt=ts-lastTime;lastTime=ts;update(dt);draw(ts);if(!gameOver&&!levelComplete)requestAnimationFrame(gameLoop);}
+    resize();showMenu();
+  </script>
+</body>
+</html>
