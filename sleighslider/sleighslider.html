@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>3D Sleigh Game - Busting Blue Sleigh & HUD Score</title>
+        <style>
+            body { margin: 0; overflow: hidden; background-color: #87CEEB; /* Sky Blue */ }
+            canvas { display: block; }
+            .overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                font-family: Arial, sans-serif;
+                text-align: center;
+                z-index: 10;
+            }
+            .overlay h1 {
+                font-size: 3em;
+                margin-bottom: 20px;
+            }
+            .overlay button, .shop-button { /* Shared button style */
+                padding: 12px 25px;
+                font-size: 1.3em;
+                color: white;
+                background-color: #4CAF50;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: background-color 0.3s ease;
+                margin: 5px;
+            }
+            .overlay button:hover, .shop-button:hover {
+                background-color: #45a049;
+            }
+            .shop-button.secondary {
+                 background-color: #f44336; /* Red for close/cancel */
+            }
+            .shop-button.secondary:hover {
+                 background-color: #d32f2f;
+            }
+             .shop-button.equip-active {
+                background-color: #007bff; /* Blue for equipped */
+            }
+            .shop-button.equip-active:hover {
+                background-color: #0056b3;
+            }
+            .shop-button:disabled {
+                background-color: #grey;
+                cursor: not-allowed;
+                opacity: 0.6;
+            }
+
+            #shopOverlay {
+                 background-color: rgba(0, 0, 0, 0.85); /* Darker shop background */
+            }
+            .shop-content {
+                background-color: #333;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                width: 80%;
+                max-width: 500px;
+            }
+            .shop-item {
+                margin-bottom: 20px;
+                padding-bottom: 15px;
+                border-bottom: 1px solid #555;
+            }
+            .shop-item:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+            }
+            .shop-item h3 {
+                margin-top: 0;
+                color: #ffc107; /* Amber for item titles */
+            }
+            .shop-item p {
+                margin-bottom: 10px;
+            }
+
+
+            .hidden {
+                display: none !important;
+            }
+            #instructions, #collectibleCounterDisplay, #bestScoreDisplay, #currentScoreHudDisplay { 
+                position: absolute;
+                padding: 10px;
+                background-color: rgba(0,0,0,0.6);
+                color: white;
+                font-family: Arial, sans-serif;
+                border-radius: 5px;
+                font-size: 1.2em;
+                z-index: 5;
+            }
+            #instructions {
+                top: 10px;
+                left: 10px;
+            }
+            #scoreDisplay { /* Attached to sleigh - visibility handled by JS */
+                position: absolute; 
+                z-index: 6; 
+                pointer-events: none; 
+                padding: 4px 8px; 
+                font-size: 1.2em; 
+                font-weight: bold;
+                color: white;
+                background-color: rgba(0,0,0,0.4); 
+                border-radius: 4px;
+                transform: translate(-50%, -180%); 
+                white-space: nowrap; 
+            }
+            #collectibleCounterDisplay {
+                top: 60px; 
+                left: 10px;
+                display: flex;
+                align-items: center;
+            }
+            #bestScoreDisplay {
+                top: 110px; 
+                left: 10px;
+            }
+            #currentScoreHudDisplay {
+                top: 160px; /* Below Best Score */
+                left: 10px;
+            }
+            .collectible-icon {
+                width: 22px;
+                height: 22px;
+                background-color: red;
+                margin-right: 8px;
+                border-radius: 4px;
+                position: relative;
+                overflow: hidden;
+                border: 1px solid #cc0000; 
+            }
+            .collectible-icon::before, .collectible-icon::after {
+                content: '';
+                position: absolute;
+                left: 0;
+                width: 100%;
+                height: 5px; 
+                background-color: yellow;
+            }
+            .collectible-icon::before {
+                top: 5px; 
+            }
+            .collectible-icon::after {
+                bottom: 5px; 
+            }
+            #collectibleCountText, #bestScoreText, #currentScoreHudText { 
+                font-weight: bold;
+                font-size: 1.1em;
+            }
+            #popupMessage {
+                position: absolute;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 15px 25px;
+                background-color: rgba(0, 128, 0, 0.85); 
+                color: white;
+                font-family: Arial, sans-serif;
+                font-size: 1.8em;
+                font-weight: bold;
+                border-radius: 10px;
+                z-index: 20;
+                opacity: 0;
+                transition: opacity 0.3s ease-out;
+                pointer-events: none;
+            }
+            #popupMessage.visible {
+                opacity: 1;
+            }
+            #popupMessage.fade-out {
+                opacity: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="startScreen" class="overlay">
+            <h1>Sleigh Rider 3D</h1>
+            <button id="startButton">Start Game</button>
+            <button id="shopButton" class="shop-button secondary">Shop</button>
+        </div>
+
+        <div id="gameOverScreen" class="overlay hidden">
+            <h1>Game Over</h1> <button id="restartButton">Restart</button>
+        </div>
+
+        <div id="shopOverlay" class="overlay hidden">
+            <div class="shop-content">
+                <h2>Sleigh Shop</h2>
+                <div class="shop-item">
+                    <h3>Original Sleigh</h3>
+                    <p>The trusty classic. Balanced speed and turning.</p>
+                    <button id="equipOriginalSleighButton" class="shop-button">Equip</button>
+                </div>
+                <div class="shop-item">
+                    <h3>Red Rocket Sleigh</h3>
+                    <p>Cost: 15 Gifts</p>
+                    <p>Goes much faster, but turns a bit slower. Sleek red look!</p>
+                    <button id="buyRedSleighButton" class="shop-button">Buy (15)</button>
+                    <button id="equipRedSleighButton" class="shop-button hidden">Equip</button>
+                </div>
+                <div class="shop-item">
+                    <h3>Busting Blue Sleigh</h3>
+                    <p>Cost: 30 Gifts</p>
+                    <p>Great Sea Blue. Shatters rolling boulders on impact!</p>
+                    <button id="buyBlueSleighButton" class="shop-button">Buy (30)</button>
+                    <button id="equipBlueSleighButton" class="shop-button hidden">Equip</button>
+                </div>
+                <button id="closeShopButton" class="shop-button secondary" style="margin-top: 20px;">Close Shop</button>
+            </div>
+        </div>
+
+
+        <div id="instructions" class="hidden">
+            Left/Right Arrows: Turn. Spacebar: Jump. Moves forward automatically.
+        </div>
+        <div id="scoreDisplay">Score: 0</div>
+        <div id="collectibleCounterDisplay">
+            <span class="collectible-icon"></span>
+            <span id="collectibleCountText">0</span>
+        </div>
+        <div id="bestScoreDisplay">Best Score: <span id="bestScoreText">0</span></div>
+        <div id="currentScoreHudDisplay">Current Score: <span id="currentScoreHudText">0</span></div>
+        <div id="popupMessage" class="hidden"></div>
+
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script>
+            // --- Game States ---
+            const GAME_STATE = {
+                START_SCREEN: 'start_screen',
+                PLAYING: 'playing',
+                GAME_OVER: 'game_over'
+            };
+            let currentGameState = GAME_STATE.START_SCREEN;
+
+            // --- Global Variables ---
+            let scene, camera, renderer;
+            let sleigh, ground, wallLeft, wallRight;
+            let obstacles = []; 
+            const NUM_OBSTACLES = 10; 
+            let collectibles = [];
+            const NUM_COLLECTIBLES = 5; 
+            let rollingBoulders = []; 
+            const NUM_ROLLING_BOULDERS = 8; 
+            let trackGroup; 
+
+            // Sleigh Stats
+            const ORIGINAL_SLEIGH_SPEED = 70.0;
+            const ORIGINAL_SLEIGH_TURN_SPEED = 4.2; 
+            const ORIGINAL_SLEIGH_COLOR = 0x8B4513; // Brown
+
+            const RED_SLEIGH_SPEED = 95.0; 
+            const RED_SLEIGH_TURN_SPEED = 3.5; 
+            const RED_SLEIGH_COLOR = 0xcc0000; // Red
+            const RED_SLEIGH_COST = 15;
+
+            const BLUE_SLEIGH_SPEED = ORIGINAL_SLEIGH_SPEED; // Same as original for now
+            const BLUE_SLEIGH_TURN_SPEED = ORIGINAL_SLEIGH_TURN_SPEED; // Same as original
+            const BLUE_SLEIGH_COLOR = 0x4682B4; // SteelBlue
+            const BLUE_SLEIGH_COST = 30;
+
+
+            let currentSleighSpeed = ORIGINAL_SLEIGH_SPEED;
+            let currentSleighTurnSpeed = ORIGINAL_SLEIGH_TURN_SPEED;
+
+
+            let moveDirection = { left: false, right: false }; 
+            const maxTurnAngle = 155 * (Math.PI / 180); 
+
+            const groundWidth = 40; 
+            const groundDepth = 250; 
+            const wallWidth = 1;
+            const wallHeight = 10; 
+            const trackHalfWidth = groundWidth / 2;
+
+            const obstacleSize = { width: 4, height: wallHeight, depth: 2 };
+            const obstacleSpawnMinZ = -60; 
+            const obstacleSpawnMaxZ = -100; 
+            const obstacleMinSeparationZ = 10; 
+
+            const collectibleSize = { width: 1.2, height: 1.2, depth: 1.2 };
+            const collectibleSpawnMinZ = -50; 
+            const collectibleSpawnMaxZ = -90;
+            const collectibleMinSeparationZ = 25;
+            const COLLECTIBLE_SPAWN_START_SCORE = 5;
+            const COLLECTIBLE_SPAWN_INTERVAL = 2;
+
+            const rollingBoulderRadius = 2.0; 
+            const rollingBoulderSpeed = 15.0; 
+            const ROLLING_BOULDER_SPAWN_START_SCORE = 10; 
+            const rollingBoulderSpawnInterval = 10;     
+            let lastScoreForBoulderSpawn = -1; 
+            const boulderSpawnMinZRelative = -100; 
+            const boulderSpawnRandOffsetRelative = 40;  
+
+            let isJumping = false;
+            let verticalVelocity = 0;
+            const JUMP_VELOCITY = 22.0; 
+            const GRAVITY_ACCELERATION = 25.0;
+            const GROUND_Y = 0.4; 
+            const JUMP_TILT_ANGLE = 20 * (Math.PI / 180);
+            
+            const cameraRotationSpeed = 5.0; 
+            const cameraFollowSpeed = 2.0; 
+            
+            let score = 0;
+            let scoreTimer = 0;
+            let lastScoreForCollectibleSpawn = -1; 
+            let collectedGiftsCount = 0; 
+            let bestScore = 0;
+            let redSleighOwned = false;
+            let blueSleighOwned = false;
+            let equippedSleigh = 'original'; 
+
+
+            const UNO_GIFTS_STORAGE_KEY = 'unoGiftsCount_sleighRiderShopV2'; 
+            const BEST_SCORE_STORAGE_KEY = 'bestScore_sleighRiderShopV2';   
+            const RED_SLEIGH_OWNED_KEY = 'redSleighOwned_sleighRiderShopV2';
+            const BLUE_SLEIGH_OWNED_KEY = 'blueSleighOwned_sleighRiderShopV2';
+            const EQUIPPED_SLEIGH_KEY = 'equippedSleigh_sleighRiderShopV2';
+
+            let lastTime = 0;
+
+            let startScreenElement, gameOverScreenElement, instructionsElement, scoreDisplayElement, popupMessageElement, collectibleCounterDisplayElement, collectibleCountTextElement, bestScoreDisplayElement, bestScoreTextElement, shopOverlayElement, shopButtonElement, closeShopButtonElement, buyRedSleighButtonElement, equipOriginalSleighButtonElement, equipRedSleighButtonElement, buyBlueSleighButtonElement, equipBlueSleighButtonElement, currentScoreHudDisplayElement, currentScoreHudTextElement;
+            let startButton, restartButton;
+
+            const sleighWorldPosition = new THREE.Vector3();
+            const sleighWorldQuaternion = new THREE.Quaternion(); 
+            const cameraTargetQuaternion = new THREE.Quaternion(); 
+            const tempVecForScore = new THREE.Vector3(); 
+
+
+            function init() {
+                startScreenElement = document.getElementById('startScreen');
+                gameOverScreenElement = document.getElementById('gameOverScreen');
+                instructionsElement = document.getElementById('instructions');
+                scoreDisplayElement = document.getElementById('scoreDisplay');
+                popupMessageElement = document.getElementById('popupMessage');
+                collectibleCounterDisplayElement = document.getElementById('collectibleCounterDisplay');
+                collectibleCountTextElement = document.getElementById('collectibleCountText');
+                bestScoreDisplayElement = document.getElementById('bestScoreDisplay');
+                bestScoreTextElement = document.getElementById('bestScoreText');
+                currentScoreHudDisplayElement = document.getElementById('currentScoreHudDisplay');
+                currentScoreHudTextElement = document.getElementById('currentScoreHudText');
+                shopOverlayElement = document.getElementById('shopOverlay');
+                shopButtonElement = document.getElementById('shopButton');
+                closeShopButtonElement = document.getElementById('closeShopButton');
+                buyRedSleighButtonElement = document.getElementById('buyRedSleighButton');
+                equipOriginalSleighButtonElement = document.getElementById('equipOriginalSleighButton');
+                equipRedSleighButtonElement = document.getElementById('equipRedSleighButton');
+                buyBlueSleighButtonElement = document.getElementById('buyBlueSleighButton');
+                equipBlueSleighButtonElement = document.getElementById('equipBlueSleighButton');
+
+                startButton = document.getElementById('startButton');
+                restartButton = document.getElementById('restartButton');
+
+                startButton.addEventListener('click', startGame);
+                restartButton.addEventListener('click', showStartScreen);
+                shopButtonElement.addEventListener('click', openShop);
+                closeShopButtonElement.addEventListener('click', closeShop);
+                buyRedSleighButtonElement.addEventListener('click', buyRedSleigh);
+                equipOriginalSleighButtonElement.addEventListener('click', () => equipSleigh('original'));
+                equipRedSleighButtonElement.addEventListener('click', () => equipSleigh('red'));
+                buyBlueSleighButtonElement.addEventListener('click', buyBlueSleigh);
+                equipBlueSleighButtonElement.addEventListener('click', () => equipSleigh('blue'));
+
+
+                // Load persistent data
+                const savedGifts = localStorage.getItem(UNO_GIFTS_STORAGE_KEY);
+                collectedGiftsCount = parseInt(savedGifts, 10) || 0;
+                collectibleCountTextElement.textContent = collectedGiftsCount;
+
+                const savedBestScore = localStorage.getItem(BEST_SCORE_STORAGE_KEY);
+                bestScore = parseInt(savedBestScore, 10) || 0;
+                bestScoreTextElement.textContent = bestScore;
+
+                redSleighOwned = localStorage.getItem(RED_SLEIGH_OWNED_KEY) === 'true';
+                blueSleighOwned = localStorage.getItem(BLUE_SLEIGH_OWNED_KEY) === 'true';
+                const savedEquippedSleigh = localStorage.getItem(EQUIPPED_SLEIGH_KEY);
+                if (savedEquippedSleigh) {
+                    equippedSleigh = savedEquippedSleigh;
+                }
+                applySleighProperties(); 
+
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB);
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.shadowMap.enabled = true;
+                document.body.appendChild(renderer.domElement);
+
+                trackGroup = new THREE.Group();
+                scene.add(trackGroup);
+
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambientLight); 
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 20); 
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 1024;
+                directionalLight.shadow.mapSize.height = 1024;
+                directionalLight.shadow.camera.left = -trackHalfWidth - 20; 
+                directionalLight.shadow.camera.right = trackHalfWidth + 20;
+                directionalLight.shadow.camera.top = trackHalfWidth + 20;
+                directionalLight.shadow.camera.bottom = -trackHalfWidth - 20;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = groundDepth + 50; 
+                scene.add(directionalLight);
+                
+                const sleighGeometry = new THREE.BoxGeometry(1.5, 0.8, 3);
+                const sleighMaterial = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.1 }); 
+                sleigh = new THREE.Mesh(sleighGeometry, sleighMaterial);
+                sleigh.castShadow = true;
+                sleigh.name = "sleigh";
+                trackGroup.add(sleigh); 
+
+                const groundGeometry = new THREE.PlaneGeometry(groundWidth, groundDepth);
+                const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x98FB98, side: THREE.DoubleSide, roughness: 0.9 });
+                ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2; 
+                ground.receiveShadow = true;
+                trackGroup.add(ground); 
+
+                const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+                const wallGeometry = new THREE.BoxGeometry(wallWidth, wallHeight, groundDepth);
+                wallLeft = new THREE.Mesh(wallGeometry, wallMaterial);
+                wallLeft.position.set(-(trackHalfWidth + wallWidth / 2), wallHeight / 2, 0);
+                wallLeft.receiveShadow = true; wallLeft.castShadow = true;
+                trackGroup.add(wallLeft); 
+                wallRight = new THREE.Mesh(wallGeometry, wallMaterial);
+                wallRight.position.set(trackHalfWidth + wallWidth / 2, wallHeight / 2, 0);
+                wallRight.receiveShadow = true; wallRight.castShadow = true;
+                trackGroup.add(wallRight); 
+
+                const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+                const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+                for (let i = 0; i < NUM_OBSTACLES; i++) {
+                    const block = new THREE.Mesh(new THREE.BoxGeometry(obstacleSize.width, obstacleSize.height, obstacleSize.depth), obstacleMaterial);
+                    block.castShadow = true; block.receiveShadow = true;
+                    const edges = new THREE.EdgesGeometry(block.geometry);
+                    const outline = new THREE.LineSegments(edges, outlineMaterial);
+                    block.add(outline);
+                    block.userData.isObstacle = true; 
+                    obstacles.push(block);
+                    trackGroup.add(block); 
+                }
+
+                const collectibleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 }); // Red
+                for (let i = 0; i < NUM_COLLECTIBLES; i++) {
+                    const collectible = new THREE.Mesh(
+                        new THREE.BoxGeometry(collectibleSize.width, collectibleSize.height, collectibleSize.depth),
+                        collectibleMaterial
+                    );
+                    collectible.castShadow = true;
+                    collectible.userData.isCollectible = true;
+                    collectible.userData.isActive = false; 
+                    collectible.visible = false; 
+                    collectibles.push(collectible);
+                    trackGroup.add(collectible);
+                }
+
+                const boulderMaterial = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.6 }); 
+                for (let i = 0; i < NUM_ROLLING_BOULDERS; i++) {
+                    const boulder = new THREE.Mesh(
+                        new THREE.SphereGeometry(rollingBoulderRadius, 16, 12), 
+                        boulderMaterial
+                    );
+                    boulder.castShadow = true;
+                    const edges = new THREE.EdgesGeometry(boulder.geometry); 
+                    const outline = new THREE.LineSegments(edges, outlineMaterial);
+                    boulder.add(outline);
+                    boulder.userData.isRollingBoulder = true; 
+                    boulder.userData.isActive = false;
+                    boulder.userData.rollDirectionX = 0; 
+                    boulder.visible = false;
+                    rollingBoulders.push(boulder); 
+                    trackGroup.add(boulder);
+                }
+
+                resetSleighState(); 
+                showStartScreen();
+
+                document.addEventListener('keydown', onKeyDown, false);
+                document.addEventListener('keyup', onKeyUp, false);
+                window.addEventListener('resize', onWindowResize, false);
+
+                lastTime = performance.now();
+                animate();
+            }
+
+            function openShop() {
+                shopOverlayElement.classList.remove('hidden');
+                updateShopUI();
+            }
+            function closeShop() {
+                shopOverlayElement.classList.add('hidden');
+            }
+
+            function updateShopUI() {
+                collectibleCountTextElement.textContent = collectedGiftsCount; 
+                // Red Sleigh
+                if (redSleighOwned) {
+                    buyRedSleighButtonElement.classList.add('hidden');
+                    equipRedSleighButtonElement.classList.remove('hidden');
+                } else {
+                    buyRedSleighButtonElement.classList.remove('hidden');
+                    equipRedSleighButtonElement.classList.add('hidden');
+                    buyRedSleighButtonElement.disabled = collectedGiftsCount < RED_SLEIGH_COST;
+                }
+                equipRedSleighButtonElement.textContent = equippedSleigh === 'red' ? "Equipped" : "Equip";
+                equipRedSleighButtonElement.classList.toggle('equip-active', equippedSleigh === 'red');
+
+                // Blue Sleigh
+                if (blueSleighOwned) {
+                    buyBlueSleighButtonElement.classList.add('hidden');
+                    equipBlueSleighButtonElement.classList.remove('hidden');
+                } else {
+                    buyBlueSleighButtonElement.classList.remove('hidden');
+                    equipBlueSleighButtonElement.classList.add('hidden');
+                    buyBlueSleighButtonElement.disabled = collectedGiftsCount < BLUE_SLEIGH_COST;
+                }
+                equipBlueSleighButtonElement.textContent = equippedSleigh === 'blue' ? "Equipped" : "Equip";
+                equipBlueSleighButtonElement.classList.toggle('equip-active', equippedSleigh === 'blue');
+
+                // Original Sleigh
+                equipOriginalSleighButtonElement.textContent = equippedSleigh === 'original' ? "Equipped" : "Equip";
+                equipOriginalSleighButtonElement.classList.toggle('equip-active', equippedSleigh === 'original');
+            }
+
+            function buyRedSleigh() {
+                if (collectedGiftsCount >= RED_SLEIGH_COST && !redSleighOwned) {
+                    collectedGiftsCount -= RED_SLEIGH_COST;
+                    redSleighOwned = true;
+                    localStorage.setItem(UNO_GIFTS_STORAGE_KEY, collectedGiftsCount.toString());
+                    localStorage.setItem(RED_SLEIGH_OWNED_KEY, 'true');
+                    showPopupMessage("Red Sleigh Purchased!", 1500);
+                    updateShopUI();
+                } else if (redSleighOwned) {
+                    showPopupMessage("You already own this!", 1000);
+                } else {
+                    showPopupMessage("Not enough gifts!", 1000);
+                }
+            }
+             function buyBlueSleigh() {
+                if (collectedGiftsCount >= BLUE_SLEIGH_COST && !blueSleighOwned) {
+                    collectedGiftsCount -= BLUE_SLEIGH_COST;
+                    blueSleighOwned = true;
+                    localStorage.setItem(UNO_GIFTS_STORAGE_KEY, collectedGiftsCount.toString());
+                    localStorage.setItem(BLUE_SLEIGH_OWNED_KEY, 'true');
+                    showPopupMessage("Busting Blue Sleigh Purchased!", 1500);
+                    updateShopUI();
+                } else if (blueSleighOwned) {
+                    showPopupMessage("You already own this!", 1000);
+                } else {
+                    showPopupMessage("Not enough gifts!", 1000);
+                }
+            }
+
+
+            function equipSleigh(sleighType) {
+                if (sleighType === 'red' && !redSleighOwned) {
+                    showPopupMessage("Buy Red Sleigh first!", 1000); return;
+                }
+                if (sleighType === 'blue' && !blueSleighOwned) {
+                    showPopupMessage("Buy Blue Sleigh first!", 1000); return;
+                }
+
+                equippedSleigh = sleighType;
+                localStorage.setItem(EQUIPPED_SLEIGH_KEY, equippedSleigh);
+                applySleighProperties();
+                let sleighName = "Original";
+                if (sleighType === 'red') sleighName = "Red Rocket";
+                if (sleighType === 'blue') sleighName = "Busting Blue";
+                showPopupMessage(`${sleighName} Sleigh Equipped!`, 1000);
+                updateShopUI();
+            }
+            
+            function applySleighProperties() {
+                if (equippedSleigh === 'red') {
+                    currentSleighSpeed = RED_SLEIGH_SPEED;
+                    currentSleighTurnSpeed = RED_SLEIGH_TURN_SPEED;
+                    if (sleigh) sleigh.material.color.setHex(RED_SLEIGH_COLOR);
+                } else if (equippedSleigh === 'blue') {
+                    currentSleighSpeed = BLUE_SLEIGH_SPEED;
+                    currentSleighTurnSpeed = BLUE_SLEIGH_TURN_SPEED;
+                    if (sleigh) sleigh.material.color.setHex(BLUE_SLEIGH_COLOR);
+                }
+                else { // original
+                    currentSleighSpeed = ORIGINAL_SLEIGH_SPEED;
+                    currentSleighTurnSpeed = ORIGINAL_SLEIGH_TURN_SPEED;
+                    if (sleigh) sleigh.material.color.setHex(ORIGINAL_SLEIGH_COLOR);
+                }
+            }
+
+
+            function showStartScreen() {
+                currentGameState = GAME_STATE.START_SCREEN;
+                startScreenElement.classList.remove('hidden');
+                gameOverScreenElement.classList.add('hidden');
+                instructionsElement.classList.add('hidden');
+                scoreDisplayElement.classList.add('hidden'); 
+                collectibleCounterDisplayElement.classList.remove('hidden'); 
+                collectibleCountTextElement.textContent = collectedGiftsCount; 
+                bestScoreDisplayElement.classList.remove('hidden'); 
+                bestScoreTextElement.textContent = bestScore;
+                currentScoreHudDisplayElement.classList.add('hidden');
+                popupMessageElement.classList.add('hidden');
+            }
+
+            function showGameOverScreen() {
+                currentGameState = GAME_STATE.GAME_OVER;
+                gameOverScreenElement.classList.remove('hidden');
+                startScreenElement.classList.add('hidden');
+                instructionsElement.classList.add('hidden');
+                if (score > bestScore) {
+                    bestScore = score;
+                    localStorage.setItem(BEST_SCORE_STORAGE_KEY, bestScore.toString());
+                    bestScoreTextElement.textContent = bestScore;
+                }
+                bestScoreDisplayElement.classList.remove('hidden'); 
+                collectibleCounterDisplayElement.classList.remove('hidden'); 
+                currentScoreHudDisplayElement.classList.remove('hidden'); // Keep current score visible
+            }
+
+            function startGame() {
+                currentGameState = GAME_STATE.PLAYING;
+                startScreenElement.classList.add('hidden');
+                gameOverScreenElement.classList.add('hidden');
+                instructionsElement.classList.remove('hidden');
+                scoreDisplayElement.classList.remove('hidden');
+                collectibleCounterDisplayElement.classList.remove('hidden');
+                bestScoreDisplayElement.classList.remove('hidden'); 
+                currentScoreHudDisplayElement.classList.remove('hidden');
+                resetSleighState(); 
+                collectibleCountTextElement.textContent = collectedGiftsCount; 
+                bestScoreTextElement.textContent = bestScore;
+                currentScoreHudTextElement.textContent = score;
+            }
+
+            function resetSleighState() {
+                applySleighProperties(); 
+                sleigh.position.set(0, GROUND_Y, 0);
+                sleigh.rotation.set(0, 0, 0); 
+                trackGroup.rotation.y = Math.PI / 2; 
+
+                isJumping = false;
+                verticalVelocity = 0;
+                score = 0; 
+                scoreTimer = 0;
+                scoreDisplayElement.textContent = "Score: " + score;
+                if(currentScoreHudTextElement) currentScoreHudTextElement.textContent = score;
+                lastScoreForCollectibleSpawn = -1; 
+                lastScoreForBoulderSpawn = -1;    
+                moveDirection = { left: false, right: false }; 
+
+                const initialTrackScrollOffset = -groundDepth / 4;
+                ground.position.z = initialTrackScrollOffset;
+                wallLeft.position.z = initialTrackScrollOffset;
+                wallRight.position.z = initialTrackScrollOffset;
+
+                let lastObstacleZ = sleigh.position.z + obstacleSpawnMaxZ; 
+                obstacles.forEach(obstacle => {
+                    const randomX = THREE.MathUtils.randFloat(-trackHalfWidth + obstacleSize.width / 2 + 0.5, trackHalfWidth - obstacleSize.width / 2 - 0.5);
+                    const randomZ = sleigh.position.z + lastObstacleZ - obstacleMinSeparationZ - THREE.MathUtils.randFloat(0, 50);
+                    obstacle.position.set(randomX, obstacleSize.height / 2, randomZ);
+                    lastObstacleZ = randomZ;
+                });
+
+                collectibles.forEach(c => {
+                    c.visible = false;
+                    c.userData.isActive = false;
+                    c.position.y = -1000; 
+                });
+                rollingBoulders.forEach(b => { 
+                    b.visible = false;
+                    b.userData.isActive = false;
+                    b.position.y = -1000; 
+                });
+                updateCamera(0); 
+            }
+
+            function onKeyDown(event) {
+                if (currentGameState !== GAME_STATE.PLAYING) return;
+                switch (event.key) {
+                    case 'ArrowLeft': case 'a': moveDirection.left = true; break;
+                    case 'ArrowRight': case 'd': moveDirection.right = true; break;
+                    case ' ':
+                        if (!isJumping) { isJumping = true; verticalVelocity = JUMP_VELOCITY; }
+                        break;
+                }
+            }
+
+            function onKeyUp(event) {
+                if (currentGameState !== GAME_STATE.PLAYING) return;
+                switch (event.key) {
+                    case 'ArrowLeft': case 'a': moveDirection.left = false; break;
+                    case 'ArrowRight': case 'd': moveDirection.right = false; break;
+                }
+            }
+
+            const sleighBox = new THREE.Box3();
+            const obstacleBox = new THREE.Box3(); 
+            const collectibleBox = new THREE.Box3();
+
+            function updateSleighAndEnvironment(deltaTime) {
+                scoreTimer += deltaTime;
+                if (scoreTimer >= 1.0) {
+                    score++;
+                    scoreTimer -= 1.0; 
+                    scoreDisplayElement.textContent = "Score: " + score;
+                    if(currentScoreHudTextElement) currentScoreHudTextElement.textContent = score;
+                }
+
+                if (score >= COLLECTIBLE_SPAWN_START_SCORE && 
+                    (score - COLLECTIBLE_SPAWN_START_SCORE) % COLLECTIBLE_SPAWN_INTERVAL === 0 && 
+                    score !== lastScoreForCollectibleSpawn) {
+                    spawnCollectible();
+                    lastScoreForCollectibleSpawn = score;
+                }
+                
+                if (score >= ROLLING_BOULDER_SPAWN_START_SCORE &&
+                    (score - ROLLING_BOULDER_SPAWN_START_SCORE) % rollingBoulderSpawnInterval === 0 &&
+                    score !== lastScoreForBoulderSpawn) {
+                    spawnRollingBoulder();
+                    lastScoreForBoulderSpawn = score;
+                }
+
+                if (isJumping) {
+                    sleigh.position.y += verticalVelocity * deltaTime; 
+                    verticalVelocity -= GRAVITY_ACCELERATION * deltaTime;
+                    if (sleigh.position.y > GROUND_Y + 0.05) {
+                        if (verticalVelocity > 0) sleigh.rotation.x = JUMP_TILT_ANGLE;
+                        else sleigh.rotation.x = -JUMP_TILT_ANGLE;
+                    }
+                    if (sleigh.position.y <= GROUND_Y) {
+                        sleigh.position.y = GROUND_Y; isJumping = false; verticalVelocity = 0; sleigh.rotation.x = 0;
+                    }
+                } else { sleigh.rotation.x = 0; }
+
+                sleigh.translateZ(-currentSleighSpeed * deltaTime); 
+
+                if (moveDirection.left) sleigh.rotation.y += currentSleighTurnSpeed * deltaTime; 
+                if (moveDirection.right) sleigh.rotation.y -= currentSleighTurnSpeed * deltaTime; 
+                sleigh.rotation.y = THREE.MathUtils.clamp(sleigh.rotation.y, -maxTurnAngle, maxTurnAngle);
+                
+                const groundScrollThreshold = ground.position.z + groundDepth / 2;
+                if (sleigh.position.z < groundScrollThreshold - groundDepth * 0.75) { 
+                    const newRelativeZ = ground.position.z - groundDepth / 2;
+                    ground.position.z = newRelativeZ;
+                    wallLeft.position.z = newRelativeZ;
+                    wallRight.position.z = newRelativeZ;
+                }
+                
+                sleigh.getWorldPosition(sleighWorldPosition); 
+                sleighBox.setFromObject(sleigh); 
+
+                obstacles.forEach(obstacle => {
+                    if (obstacle.position.z > sleigh.position.z + 50) { 
+                        const randomX = THREE.MathUtils.randFloat(-trackHalfWidth + obstacleSize.width / 2 + 0.5, trackHalfWidth - obstacleSize.width / 2 - 0.5);
+                        let furthestZ = sleigh.position.z; 
+                        obstacles.forEach(o => { if (o.position.z < furthestZ) furthestZ = o.position.z; });
+                        obstacle.position.set(randomX, obstacleSize.height / 2, Math.min(furthestZ, sleigh.position.z) + obstacleSpawnMinZ - THREE.MathUtils.randFloat(0, 50));
+                    }
+                    obstacleBox.setFromObject(obstacle); 
+                    if (sleighBox.intersectsBox(obstacleBox)) {
+                        showGameOverScreen();
+                        return;
+                    }
+                });
+                if (currentGameState === GAME_STATE.GAME_OVER) return;
+
+                collectibles.forEach(collectible => {
+                    if (!collectible.userData.isActive) return; 
+                    if (collectible.position.z > sleigh.position.z + 50) { 
+                        collectible.userData.isActive = false;
+                        collectible.visible = false;
+                        collectible.position.y = -1000; 
+                    }
+                    collectibleBox.setFromObject(collectible);
+                    if (sleighBox.intersectsBox(collectibleBox)) {
+                        collectedGiftsCount++;
+                        collectibleCountTextElement.textContent = collectedGiftsCount;
+                        localStorage.setItem(UNO_GIFTS_STORAGE_KEY, collectedGiftsCount.toString()); 
+                        showPopupMessage("UNO GIFT ACQUIRED", 1000);
+                        collectible.userData.isActive = false;
+                        collectible.visible = false;
+                        collectible.position.y = -1000; 
+                    }
+                });
+
+                rollingBoulders.forEach(boulder => { 
+                    if (!boulder.userData.isActive) return;
+                    boulder.position.x += boulder.userData.rollDirectionX * rollingBoulderSpeed * deltaTime;
+                    if (boulder.userData.rollDirectionX > 0) boulder.rotation.z -= currentSleighTurnSpeed * deltaTime * 3; 
+                    else boulder.rotation.z += currentSleighTurnSpeed * deltaTime * 3; 
+                    
+                    const outOfBoundsX = trackHalfWidth + rollingBoulderRadius * 3; 
+                    if (boulder.position.z > sleigh.position.z + 50 || Math.abs(boulder.position.x) > outOfBoundsX) {
+                        boulder.userData.isActive = false;
+                        boulder.visible = false;
+                        boulder.position.y = -1000;
+                    }
+                    obstacleBox.setFromObject(boulder); 
+                    if (sleighBox.intersectsBox(obstacleBox)) {
+                        if (equippedSleigh === 'blue') {
+                            boulder.material.color.setHex(0x00BFFF); // Freezing blue
+                            // Make it "shatter" (disappear after a short delay)
+                            setTimeout(() => {
+                                boulder.userData.isActive = false;
+                                boulder.visible = false;
+                                boulder.position.y = -1000;
+                                // Reset color for next use if needed, though it's reused from pool
+                                boulder.material.color.setHex(0xf0f0f0); 
+                            }, 200); // Shatter delay
+                        } else {
+                            showGameOverScreen();
+                            return;
+                        }
+                    }
+                });
+                if (currentGameState === GAME_STATE.GAME_OVER) return;
+
+                const sleighHalfWidth = sleigh.geometry.parameters.width / 2;
+                const wallBoundaryLeft = wallLeft.position.x + wallWidth / 2;
+                const wallBoundaryRight = wallRight.position.x - wallWidth / 2;
+
+                if (sleigh.position.x - sleighHalfWidth < wallBoundaryLeft ||
+                    sleigh.position.x + sleighHalfWidth > wallBoundaryRight) {
+                    showGameOverScreen();
+                }
+            }
+
+            function spawnCollectible() {
+                for (let i = 0; i < collectibles.length; i++) {
+                    if (!collectibles[i].userData.isActive) {
+                        const collectible = collectibles[i];
+                        const randomX = THREE.MathUtils.randFloat(
+                            -trackHalfWidth + collectibleSize.width / 2 + 0.2, 
+                            trackHalfWidth - collectibleSize.width / 2 - 0.2
+                        );
+                        let furthestZ = sleigh.position.z;
+                        obstacles.forEach(o => { if (o.position.z < furthestZ) furthestZ = o.position.z; });
+                        collectibles.forEach(c => { if (c.userData.isActive && c.position.z < furthestZ) furthestZ = c.position.z; });
+
+                        collectible.position.set(
+                            randomX,
+                            GROUND_Y + collectibleSize.height / 2, 
+                            Math.min(furthestZ, sleigh.position.z) + collectibleSpawnMinZ - THREE.MathUtils.randFloat(0, 30)
+                        );
+                        collectible.userData.isActive = true;
+                        collectible.visible = true;
+                        break; 
+                    }
+                }
+            }
+            
+            function spawnRollingBoulder() { 
+                for (let i = 0; i < rollingBoulders.length; i++) {
+                    if (!rollingBoulders[i].userData.isActive) {
+                        const boulder = rollingBoulders[i];
+                        boulder.userData.isActive = true;
+                        boulder.visible = true;
+                        boulder.material.color.setHex(0xf0f0f0); // Reset color
+                        const spawnFromLeft = Math.random() < 0.5;
+                        if (spawnFromLeft) {
+                            boulder.position.x = -(trackHalfWidth + rollingBoulderRadius + 2); 
+                            boulder.userData.rollDirectionX = 1; 
+                        } else {
+                            boulder.position.x = trackHalfWidth + rollingBoulderRadius + 2; 
+                            boulder.userData.rollDirectionX = -1; 
+                        }
+                        boulder.position.y = GROUND_Y + rollingBoulderRadius; 
+                        
+                        boulder.position.z = sleigh.position.z + boulderSpawnMinZRelative - THREE.MathUtils.randFloat(0, boulderSpawnRandOffsetRelative); 
+                        
+                        boulder.rotation.set(0,0,0); 
+                        break; 
+                    }
+                }
+            }
+
+            function showPopupMessage(message, duration) {
+                popupMessageElement.textContent = message;
+                popupMessageElement.classList.remove('hidden', 'fade-out');
+                popupMessageElement.classList.add('visible');
+                setTimeout(() => {
+                    popupMessageElement.classList.add('fade-out');
+                }, duration - 300); 
+                setTimeout(() => {
+                    popupMessageElement.classList.add('hidden');
+                    popupMessageElement.classList.remove('visible', 'fade-out');
+                }, duration);
+            }
+
+            function updateCamera(deltaTime) {
+                sleigh.getWorldPosition(sleighWorldPosition);
+                sleigh.getWorldQuaternion(sleighWorldQuaternion); 
+
+                const localOffset = new THREE.Vector3(0, 0.6, -0.5); 
+                
+                cameraTargetQuaternion.copy(sleighWorldQuaternion);
+                
+                camera.quaternion.slerp(cameraTargetQuaternion, cameraRotationSpeed * deltaTime);
+                
+                const worldOffset = localOffset.clone().applyQuaternion(camera.quaternion); 
+                camera.position.copy(sleighWorldPosition).add(worldOffset);
+            }
+
+
+            function updateScoreDisplayPosition() {
+                if (currentGameState !== GAME_STATE.PLAYING || !sleigh || !camera || !renderer) {
+                    scoreDisplayElement.classList.add('hidden');
+                    return;
+                }
+                scoreDisplayElement.classList.remove('hidden');
+                
+                sleigh.getWorldPosition(tempVecForScore); 
+                tempVecForScore.y += 1.8; 
+                tempVecForScore.project(camera); 
+                
+                const x = (tempVecForScore.x * .5 + .5) * renderer.domElement.clientWidth;
+                const y = (tempVecForScore.y * -.5 + .5) * renderer.domElement.clientHeight;
+                
+                scoreDisplayElement.style.left = `${x}px`;
+                scoreDisplayElement.style.top = `${y}px`;
+                
+                const sleighDirection = new THREE.Vector3(); 
+                camera.getWorldDirection(sleighDirection);
+                const worldSleighPos = new THREE.Vector3(); 
+                sleigh.getWorldPosition(worldSleighPos);
+                const vectorToSleigh = new THREE.Vector3().subVectors(worldSleighPos, camera.position);
+
+                if (tempVecForScore.z > 1 || sleighDirection.dot(vectorToSleigh) < 0) {
+                     scoreDisplayElement.classList.add('hidden');
+                } else {
+                     scoreDisplayElement.classList.remove('hidden');
+                }
+            }
+
+            function animate(currentTime) {
+                requestAnimationFrame(animate);
+                const deltaTime = (currentTime - lastTime) / 1000 || 0;
+                lastTime = currentTime;
+                const clampedDeltaTime = Math.min(deltaTime, 0.1);
+
+                if (currentGameState === GAME_STATE.PLAYING) {
+                    updateSleighAndEnvironment(clampedDeltaTime);
+                    updateCamera(clampedDeltaTime); 
+                    updateScoreDisplayPosition();
+                } else if (currentGameState === GAME_STATE.START_SCREEN || currentGameState === GAME_STATE.GAME_OVER) {
+                    updateCamera(clampedDeltaTime); 
+                    updateScoreDisplayPosition(); 
+                    if(currentScoreHudTextElement) currentScoreHudTextElement.textContent = score; // Update HUD score on these screens too
+                } else {
+                    scoreDisplayElement.classList.add('hidden');
+                    collectibleCounterDisplayElement.classList.add('hidden');
+                    bestScoreDisplayElement.classList.add('hidden');
+                    currentScoreHudDisplayElement.classList.add('hidden');
+                }
+                renderer.render(scene, camera);
+            }
+
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            init();
+        </script>
+    </body>
+    </html>
